@@ -1,0 +1,39 @@
+# RPM
+- name: Install DS (Centos 7 and RedOS 7.3)
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM') or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+    - name: Install nginx 
+      yum:
+        name: nginx
+        state: latest
+        update_cache: true
+
+# Deb       
+- name: Install DS (Debian 10 - 11) and Astra Linux (Orel)
+  when: (ansible_os_family == 'Debian')  or 
+        (ansible_os_family ==  'Astra Linux' )
+  block:
+    - name: Install nginx-extras 
+      apt:
+        name: nginx-extras
+        update_cache: true
+        
+- name: Started nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: yes
+
+- name: copy config file 
+  template:
+    src: r7-ds.conf.j2
+    dest: /etc/nginx/conf.d/r7-ds.conf
+
+- name: Started nginx
+  ansible.builtin.service:
+    name: nginx
+    state: restarted
+    enabled: yes
+

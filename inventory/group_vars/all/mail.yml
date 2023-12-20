@@ -1,0 +1,21 @@
+# host var
+redis: "{{ hostvars[groups['redis'][0]].ansible_host }}" 
+rabbit: "{{ hostvars[groups['rabbit'][0]].ansible_host }}"  
+postgresql: "{{ hostvars[groups['postgresql'][0]].ansible_host }}" 
+nfs: "{{ hostvars[groups['nfs'][0]].ansible_host }}"
+nginx: "{{ hostvars[groups['nginx'][0]].ansible_host }}"
+ds_cluster: ({% for host in groups['ds_cluster'] %} "{{ hostvars[host]['ansible_host']}}" , {% endfor %}  )
+# variables for db postgresql
+DS_db_psql:  "r7office"
+DS_psql_user: "psql_user"
+DS_psql_pass: "sdfV65v2cc1"
+# variables for db rabbitmq
+rmq_user: "redisuser"
+rmq_password: "r7office"
+# directory for ds cache and data
+nfs_directory_cache: "/mnt/cache"
+nfs_directory_data:  "/mnt/data"
+# secret  and jwt protocol for ds
+JWT_SECRET: "Vbhfy673vyf2!d"
+SECURE_LINK_SECRET: "Vbhfy673vyf2!d"
+JWT_HEADER: "AuthorizationJwt"

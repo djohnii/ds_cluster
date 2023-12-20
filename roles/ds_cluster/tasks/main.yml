@@ -1,0 +1,393 @@
+# ALL
+
+
+- name: add service to hosts file
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{item}}"
+  loop:
+    - "{{redis}} redis"
+    - "{{rabbit}} rabbitmq"
+    - "{{postgresql}} postgresql"
+# RPM
+- name: Install services (Centos 7 and RedOS 7.3)
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM') or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+
+    # - name: 
+    #   yum:
+    #     name: epel-release
+    #     state: present
+    - name: add 80
+      ansible.posix.firewalld:
+        port: 80/tcp
+        permanent: true
+        state: enabled
+      ignore_errors: true
+    - name: restart firewalld 
+      service: 
+        name: firewalld
+        state: restarted
+      ignore_errors: true
+    - name: install nginx
+      yum:
+        name: 
+          - nginx
+          - nfs-utils
+          - nfs4-acl-tools
+        state: present
+        update_cache: true
+    - name: Disable selinux
+      lineinfile:
+          path:  /etc/selinux/config
+          regexp: 'SELINUX=' 
+          line: 'SELINUX=disabled'
+# RedOS
+- name: Install DS RedOS 7.3
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM')
+  block:
+    - name: Creates directory
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - "/var/lib/r7-office/documentserver/App_Data/cache"
+        - "/var/www/r7-office/Data"
+    - name: start service
+      service:
+        name:  "nfs-server"  
+        state: started
+        enabled: true
+
+
+    - name: create gruos ds gid 1100
+      group:
+        name: ds
+        gid: 1100
+
+    - name: create user ds  uid 1100 and add to group ds
+      user:
+        name: ds
+        uid: 1100
+        group: ds
+        system: true
+
+    - name: update rules 
+      file:
+        path: "{{ item }}"
+        owner: ds
+        group: ds
+        recurse: true
+      loop:
+        - "/var/lib/r7-office/"
+        - "/var/www/r7-office/"
+
+    - name: mount nfs cache
+      shell: "sudo mount -t nfs -O uid=1100,iocharset=utf-8 {{nfs}}:{{nfs_directory_cache}} /var/lib/r7-office/documentserver/App_Data/cache"
+    - name: mount nfs data
+      shell: "sudo mount -t nfs -O uid=1100,iocharset=utf-8 {{nfs}}:{{nfs_directory_data}} /var/www/r7-office/Data"
+    - name: Download msttcore-fonts
+      ansible.builtin.get_url:
+        url: https://li.nux.ro/download/nux/dextop/el7/x86_64/msttcore-fonts-installer-2.6-1.noarch.rpm
+        dest: /tmp/msttcore-fonts-installer-2.6-1.noarch.rpm
+        validate_certs: no
+    - name: Install msttcore-fonts
+      ansible.builtin.shell:
+        cmd: sudo yum localinstall /tmp/msttcore-fonts-installer-2.6-1.noarch.rpm -y
+    - name: Intall DS
+      yum:
+        name: "https://download.r7-office.ru/centos/r7-office-documentserver-ee.x86_64.rpm"
+        state: present
+        disable_gpg_check: yes
+    - name: Template a file to /usr/bin/documentserver-configure.sh
+      ansible.builtin.template:
+        src: documentserver-configure.sh.j2
+        dest: /usr/bin/documentserver-configure.sh
+        owner: root
+        group: root
+        mode: '0744'
+    - name: cache | add to fstab
+      lineinfile:
+        dest: /etc/fstab
+        line: "{{ nfs }}:{{ nfs_directory_cache }} /var/lib/r7-office/documentserver/App_Data/cache nfs defaults 0 0"
+        insertafter: EOF
+        state: present
+    - name: Data | add to fstab 
+      lineinfile:
+        dest: /etc/fstab
+        line: "{{nfs}}:{{nfs_directory_data}} /var/www/r7-office/Data nfs defaults 0 0"
+        insertafter: EOF
+        state: present
+    - name: Started supervisord 
+      ansible.builtin.service:
+        name:  ds-docservice.service #supervisord
+        state: started
+        enabled: yes
+    - name: Started nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+      ignore_errors: yes
+    - name:  Run documentserver-configure.sh
+      shell:  declare -x JWT_SECRET="{{JWT_SECRET}}"  ;  declare -x JWT_HEADER="{{JWT_HEADER}}" ;  declare -x SECURE_LINK_SECRET="{{JWT_SECRET}}" ;  bash /usr/bin/documentserver-configure.sh
+
+# Centos
+- name: Install DS Centos
+  when: (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+    - name: Creates directory
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - "/var/lib/r7-office/documentserver/App_Data/cache"
+        - "/var/www/r7-office/Data"
+    - name: start service
+      service:
+        name:  "nfs-server"  
+        state: started
+        enabled: true
+
+
+    - name: create gruos ds gid 1100
+      group:
+        name: ds
+        gid: 1100
+
+    - name: create user ds  uid 1100 and add to group ds
+      user:
+        name: ds
+        uid: 1100
+        group: ds
+        system: true
+
+    - name: update rules 
+      file:
+        path: "{{ item }}"
+        owner: ds
+        group: ds
+        recurse: true
+      loop:
+        - "/var/lib/r7-office/"
+        - "/var/www/r7-office/"
+
+    - name: mount nfs cache
+      shell: "sudo mount -t nfs -O uid=1100,iocharset=utf-8 {{nfs}}:{{nfs_directory_cache}} /var/lib/r7-office/documentserver/App_Data/cache"
+    - name: mount nfs data
+      shell: "sudo mount -t nfs -O uid=1100,iocharset=utf-8 {{nfs}}:{{nfs_directory_data}} /var/www/r7-office/Data"
+    - name: Download msttcore-fonts
+      ansible.builtin.get_url:
+        url: https://li.nux.ro/download/nux/dextop/el7/x86_64/msttcore-fonts-installer-2.6-1.noarch.rpm
+        dest: /tmp/msttcore-fonts-installer-2.6-1.noarch.rpm
+        validate_certs: no
+    - name: Install msttcore-fonts
+      ansible.builtin.shell:
+        cmd: sudo yum localinstall /tmp/msttcore-fonts-installer-2.6-1.noarch.rpm -y
+    - name: Intall DS
+      yum:
+        name: "https://download.r7-office.ru/centos/r7-office-documentserver-ee.x86_64.rpm"
+        state: present
+        disable_gpg_check: yes
+    - name: Template a file to /usr/bin/documentserver-configure.sh
+      ansible.builtin.template:
+        src: documentserver-configure.sh.j2
+        dest: /usr/bin/documentserver-configure.sh
+        owner: root
+        group: root
+        mode: '0744'
+    - name: cache | add to fstab
+      lineinfile:
+        dest: /etc/fstab
+        line: "{{ nfs }}:{{ nfs_directory_cache }} /var/lib/r7-office/documentserver/App_Data/cache nfs defaults 0 0"
+        insertafter: EOF
+        state: present
+    - name: Data | add to fstab 
+      lineinfile:
+        dest: /etc/fstab
+        line: "{{nfs}}:{{nfs_directory_data}} /var/www/r7-office/Data nfs defaults 0 0"
+        insertafter: EOF
+        state: present
+    - name: Started supervisord 
+      ansible.builtin.service:
+        name:  ds-docservice.service #supervisord
+        state: started
+        enabled: yes
+    - name: Started nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+      ignore_errors: yes
+    - name:  Run documentserver-configure.sh
+      shell:  declare -x JWT_SECRET="{{JWT_SECRET}}"  ;  declare -x JWT_HEADER="{{JWT_HEADER}}" ;  declare -x SECURE_LINK_SECRET="{{JWT_SECRET}}" ;  bash /usr/bin/documentserver-configure.sh
+# Astra
+- name: install mscorefonts
+  when: ansible_os_family ==  'Astra Linux'
+  block:
+    - name: wget url
+      get_url: 
+        url: http://ftp.de.debian.org/debian/pool/contrib/m/msttcorefonts/ttf-mscorefonts-installer_3.7_all.deb
+        dest: /tmp/ttf-mscorefonts-installer_3.7_all.deb
+
+    - name: insall fontconfig
+      apt:
+        name: fontconfig
+    - name: Install a .deb package
+      ansible.builtin.apt:
+        deb: /tmp/ttf-mscorefonts-installer_3.7_all.deb
+
+
+# Deb       
+- name: Install services (Debian 10 - 11) and Astra Linux (Orel)
+  when: (ansible_os_family == 'Debian')  or 
+        (ansible_os_family ==  'Astra Linux' )
+  block:
+    - name: install nginx
+      apt:
+        name: 
+          - nginx
+          - nfs-kernel-server
+        state: present
+        update_cache: true
+    - name: add repo
+      ansible.builtin.shell:
+        cmd: echo "deb https://download.r7-office.ru/repo/debian squeeze main" | sudo tee /etc/apt/sources.list.d/r7-office.list
+    - name: add key
+      ansible.builtin.shell:
+        cmd: curl -s https://download.r7-office.ru/repo/gpgkey/r7-office.gpg.key | sudo apt-key add -
+    - name: Upgrade all packages
+      apt:
+        name: '*'
+        state: latest
+    - name: install nginx-extras 
+      ansible.builtin.package:
+        name: nginx-extras
+    - name: DS | select password JWT
+      ansible.builtin.shell:
+        cmd: echo r7-office-documentserver-ee ds/jwt-secret password "{{JWT_SECRET}}" | sudo debconf-set-selections
+    # PostgreSQL
+    - name: PostgreSQL | select pwd
+      ansible.builtin.shell:
+        cmd: sudo echo r7-office-documentserver-ee ds/db-pwd select "{{DS_psql_pass}}" | sudo debconf-set-selections
+    - name: PostgreSQL | select user
+      ansible.builtin.shell:
+        cmd: sudo echo r7-office-documentserver-ee ds/db-user select "{{DS_psql_user}}" | sudo debconf-set-selections
+    - name: PostgreSQL | select name db
+      ansible.builtin.shell:
+        cmd: sudo echo r7-office-documentserver-ee ds/db-name select "{{DS_db_psql}}" | sudo debconf-set-selections
+    - name: PostgreSQL | select name host
+      ansible.builtin.shell:
+        cmd: echo r7-office-documentserver-ee ds/db-host string postgresql | sudo debconf-set-selections
+    # RabbitMQ
+    - name: RabbitMQ | select name db
+      ansible.builtin.shell:
+        cmd: echo r7-office-documentserver-ee ds/rabbitmq-host string rabbitmq:5672 | sudo debconf-set-selections
+    - name: RabbitMQ | select name db
+      ansible.builtin.shell:
+        cmd: echo r7-office-documentserver-ee ds/rabbitmq-user string "{{rmq_user}}" | sudo debconf-set-selections
+    - name: RabbitMQ | select name db
+      ansible.builtin.shell:
+        cmd: echo r7-office-documentserver-ee ds/rabbitmq-pwd password "{{rmq_password}}" | sudo debconf-set-selections
+  #  Redis
+    - name: Redis | select name db
+      ansible.builtin.shell:
+        cmd: echo r7-office-documentserver-ee ds/redis-host string redis | sudo debconf-set-selections
+    - name: 
+      apt:  
+        update_cache: yes
+  # Install ds
+    - name: install r7-office-documentserver-ee 
+      ansible.builtin.package:
+        name: r7-office-documentserver-ee
+    - name: Stop all ds service
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - "ds-docservice"
+        - "ds-converter"
+        - "ds-metrics"
+  # NFS
+    - name: Creates directory
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - "/var/lib/r7-office/documentserver/App_Data/cache"
+        - "/var/www/r7-office/Data"
+    - name: create gruos ds gid 1100
+      group:
+        name: ds
+        gid: 1100
+
+    - name: create user ds  uid 1100 and add to group ds
+      user:
+        name: ds
+        uid: 1100
+        group: ds
+        system: true
+
+    - name: update rules 
+      file:
+        path: "{{ item }}"
+        owner: ds
+        group: ds
+        recurse: true
+      loop:
+        - "/var/lib/r7-office/"
+        - "/var/www/r7-office/"
+        - "/var/log/r7-office/"
+    - name: update rules 
+      file:
+        path: "/etc/r7-office/documentserver/local.json"
+        owner: ds
+        group: ds
+
+    - name: mount nfs cache
+      shell: "sudo mount -t nfs -O uid=1100,iocharset=utf-8 {{nfs}}:{{nfs_directory_cache}} /var/lib/r7-office/documentserver/App_Data/cache"
+    - name: mount nfs data
+      shell: "sudo mount -t nfs -O uid=1100,iocharset=utf-8 {{nfs}}:{{nfs_directory_data}} /var/www/r7-office/Data"
+
+    - name: Template a file to /usr/bin/documentserver-configure.sh
+      ansible.builtin.template:
+        src: documentserver-configure.sh.j2
+        dest: /usr/bin/documentserver-configure.sh
+        owner: root
+        group: root
+        mode: '0744'
+    - name: cache | add to fstab
+      lineinfile:
+        dest: /etc/fstab
+        line: "{{ nfs }}:{{ nfs_directory_cache }} /var/lib/r7-office/documentserver/App_Data/cache nfs defaults 0 0"
+        insertafter: EOF
+        state: present
+    - name: Data | add to fstab 
+      lineinfile:
+        dest: /etc/fstab
+        line: "{{nfs}}:{{nfs_directory_data}} /var/www/r7-office/Data nfs defaults 0 0"
+        insertafter: EOF
+        state: present
+    - name: start all ds service
+      systemd:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - "ds-docservice"
+        - "ds-converter"
+        - "ds-metrics"
+    - name: add secure_link_secret
+      shell:
+        cmd:  'SECURE_LINK_SECRET="{{ SECURE_LINK_SECRET }}" ; export SECURE_LINK_SECRET ;  bash documentserver-update-securelink.sh '
+
+
+- name: add license
+  ignore_errors: true
+  copy: 
+    src:  license.lic
+    dest: /var/www/r7-office/Data/license.lic
+- name: reboot
+  ansible.builtin.reboot:

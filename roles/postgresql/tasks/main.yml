@@ -1,0 +1,133 @@
+---
+# RPM
+- name: Install DS (Centos 7 and RedOS 7.3)
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM') or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+    - name: Upgrade all packages
+      yum:
+        name: '*'
+        state: latest
+    - name: Install ca-certificates 
+      yum:
+        name: ca-certificates
+        state: latest
+    - name: Install postgresql 
+      yum:
+        name:
+          - postgresql
+          - postgresql-server
+        state: latest
+    - name: Initdb
+      ansible.builtin.shell:
+        cmd: service postgresql initdb
+      ignore_errors: yes 
+    - name: Chkconfig
+      ansible.builtin.shell:
+        cmd: chkconfig postgresql on
+    - name: Copy a file to /var/lib/pgsql/data/pg_hba.conf
+      template:
+        src: pg_hba.conf.j2
+        dest: /var/lib/pgsql/data/pg_hba.conf
+        owner: postgres
+        group: postgres
+        mode: '0600'
+    - name: change postgresql host 
+      replace:
+          path: /var/lib/pgsql/data/postgresql.conf 
+          regexp: "#listen_addresses = 'localhost'" 
+          replace: "listen_addresses = '*'"
+    - name: change postgresql port
+      replace:
+          path: /var/lib/pgsql/data/postgresql.conf 
+          regexp: "#port = 5432" 
+          replace: "port = 5432"
+
+# DEB
+- name: Install DS (Debian 10 - 11) and Astra Linux (Orel)
+  when: (ansible_os_family == 'Debian')  or (ansible_os_family ==  'Astra Linux' )
+  block: 
+    - name: add repo
+      ansible.builtin.shell:
+        cmd: echo "deb https://download.r7-office.ru/repo/debian squeeze main" | sudo tee /etc/apt/sources.list.d/r7-office.list
+    - name: add key
+      ansible.builtin.shell:
+        cmd: curl -s https://download.r7-office.ru/repo/gpgkey/r7-office.gpg.key | sudo apt-key add -
+    - name: Install postgresql 
+      apt:
+        name:
+          - postgresql
+          # - postgresql-server
+        state: latest
+        update_cache: true
+    - name: Run ps aux command
+      shell: ps aux | grep 'postgres *-D'
+      register: ps_output
+      changed_when: false
+
+    - name: Extract config_file path
+      set_fact:
+        config_file_path: "{{ ps_output.stdout | regex_replace('^.*-c config_file=(.*)/postgresql.conf$', '\\1') }}"
+
+    - name: Print config_file path
+      debug:
+        var: config_file_path
+
+    - name: Copy a file to /etc/postgresql/*/main/pg_hba.conf 
+      template:
+        src: pg_hba.conf.j2
+        dest: "{{config_file_path}}/pg_hba.conf"
+        owner: postgres
+        group: postgres
+        mode: '0600'
+    - name: change postgresql host 
+      replace:
+          path: "{{config_file_path}}/postgresql.conf"
+          regexp: "#listen_addresses = 'localhost'" 
+          replace: "listen_addresses = '*'"
+    - name: change postgresql port
+      replace:
+          path: "{{config_file_path}}/postgresql.conf" 
+          regexp: "#port = 5432" 
+          replace: "port = 5432"
+
+
+
+- name: Restart service postgresql
+  ansible.builtin.service:
+    name: postgresql
+    state: restarted
+    enabled: yes
+
+- name: Create db
+  ansible.builtin.shell:
+    cmd: sudo -u postgres psql -c "CREATE DATABASE {{ DS_db_psql }};"
+
+- name: Create user in postgresql
+  ansible.builtin.shell:
+    cmd: sudo -u postgres psql -c "CREATE USER {{ DS_psql_user }} WITH password '{{ DS_psql_pass }}';"
+
+- name: Add privileges
+  ansible.builtin.shell:
+    cmd: sudo -u postgres psql -c "GRANT ALL privileges ON DATABASE {{ DS_db_psql }} TO {{ DS_psql_user }};"
+- name: Settings firewalld
+  ignore_errors: yes
+  block:
+    - name:  Add-port=5432/tcp
+      ansible.posix.firewalld:
+        port: 5432/tcp
+        permanent: true
+        state: enabled
+
+    - name: Firewall reload
+      ansible.builtin.shell:
+        cmd: firewall-cmd --reload
+
+- name: Disable selinux
+  ignore_errors: yes
+  lineinfile:
+      path:  /etc/selinux/config
+      regexp: 'SELINUX=' 
+      line: 'SELINUX=disabled'
+

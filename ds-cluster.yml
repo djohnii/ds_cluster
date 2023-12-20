@@ -1,0 +1,44 @@
+---
+
+# Postgresql
+- hosts: postgresql
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - { role: postgresql }
+# Redis
+- hosts: redis
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - { role: redis }
+# RabbitMQ
+- hosts: rabbit
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - { role: rabbit }
+# NFS
+- hosts: nfs
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - { role: nfs }   
+# Nginx
+- hosts: nginx
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - { role: nginx }
+# DS cluster
+- hosts: ds_cluster
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  roles:
+    - { role: ds_cluster }  

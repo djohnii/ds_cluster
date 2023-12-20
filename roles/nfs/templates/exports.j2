@@ -1,0 +1,8 @@
+{% for host in groups['ds_cluster'] %}
+/mnt/cache {{ hostvars[host]['ansible_host']}}/24(rw,insecure,nohide,all_squash,anonuid=1100,anongid=1100,no_subtree_check)
+/mnt/data {{ hostvars[host]['ansible_host']}}/24(rw,insecure,nohide,all_squash,anonuid=1100,anongid=1100,no_subtree_check)
+{% endfor %} 
+
+
+
+

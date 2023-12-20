@@ -1,0 +1,88 @@
+# RPM
+- name: Install DS (Centos 7 and RedOS 7.3)
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM') or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+    - name: install nfs
+      yum:
+        name:
+          - nfs-utils
+          - nfs4-acl-tools
+        state: present
+        update_cache: true
+    - name: add 2049
+      ansible.posix.firewalld:
+        port: 2049/tcp
+        permanent: true
+        state: enabled
+      ignore_errors: true
+    - name: restart firewalld 
+      service: 
+        name: firewalld
+        state: restarted
+      ignore_errors: true
+# Deb       
+- name: Install DS (Debian 10 - 11) and Astra Linux (Orel)
+  when: (ansible_os_family == 'Debian')  or 
+        (ansible_os_family ==  'Astra Linux' )
+  block:
+    - name:
+      apt:
+        name:
+          - nfs-kernel-server
+        state: present
+        update_cache: true
+
+- name: start service
+  service:
+    name: nfs-server  
+    state: started
+    enabled: true
+- name: Creates directory
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - "{{nfs_directory_cache}}"
+    - "{{nfs_directory_data}}"
+
+
+- name: create gruos ds gid 1100
+  group:
+    name: ds
+    gid: 1100
+
+- name: create user ds  uid 1100 and add to group ds
+  user:
+    name: ds
+    uid: 1100
+    group: ds
+
+- name: update rules 
+  file:
+    path: "{{ item }}"
+    owner: ds
+    group: ds
+    recurse: true
+  loop:
+    - "{{nfs_directory_cache}}"
+    - "{{nfs_directory_data}}"
+
+- name: copy template file
+  template:
+    src: exports.j2
+    dest: "/etc/exports"
+- name: start fs
+  command: "exportfs -ra"
+- name: add 2049
+  ansible.posix.firewalld:
+    port: 2049/tcp
+    permanent: true
+    state: enabled
+  ignore_errors: true
+- name: restart firewalld 
+  service: 
+    name: firewalld
+    state: restarted
+  ignore_errors: true

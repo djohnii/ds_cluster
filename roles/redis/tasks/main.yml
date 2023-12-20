@@ -1,0 +1,88 @@
+# Centos
+- name: Install DS Centos 
+  when: (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+    - name: RPM | Install redis-server
+      yum:
+        name: redis
+        state: latest
+        update_cache: true
+    - name: add 6379
+      ansible.posix.firewalld:
+        port: 6379/tcp
+        permanent: true
+        state: enabled
+      ignore_errors: true
+    - name: restart firewalld 
+      service: 
+        name: firewalld
+        state: restarted
+      ignore_errors: true
+    - name: conf redis
+      template:
+        src: redis.conf.j2
+        dest: /etc/redis.conf
+
+# RedOS
+- name: Install DS RedOS 
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM')
+  block:
+    - name: RPM | Install redis-server
+      yum:
+        name: redis
+        state: latest
+        update_cache: true
+    - name: add 6379
+      ansible.posix.firewalld:
+        port: 6379/tcp
+        permanent: true
+        state: enabled
+      ignore_errors: true
+    - name: restart firewalld 
+      service: 
+        name: firewalld
+        state: restarted
+      ignore_errors: true
+    - name: conf redis
+      template:
+        src: redis.conf.j2
+        dest: /etc/redis/redis.conf
+
+# Deb       
+- name: Install DS (Debian 10 - 11) and Astra Linux (Orel)
+  when: (ansible_os_family == 'Debian')  or 
+        (ansible_os_family ==  'Astra Linux' )
+  block:
+    - name: Deb | Install redis-server 
+      apt:
+        name: redis-server
+        update_cache: true
+    - name: change /etc/redis/redis.conf
+      lineinfile:
+          path: /etc/redis/redis.conf
+          regexp: 'protected-mode' 
+          line: 'protected-mode no'
+          
+    - name: change etc/redis/redis.conf
+      lineinfile:
+          path: /etc/redis/redis.conf
+          regexp: 'bind 127.0.0.1' 
+          line: 'bind 0.0.0.0'
+- name: Start service redis
+  ansible.builtin.service:
+    name: redis
+    state: restarted
+    enabled: yes
+- name: add 6379
+  ansible.posix.firewalld:
+    port: 6379/tcp
+    permanent: true
+    state: enabled
+  ignore_errors: true
+- name: restart firewalld 
+  service: 
+    name: firewalld
+    state: restarted
+  ignore_errors: true
+

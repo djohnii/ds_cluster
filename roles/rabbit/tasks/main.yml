@@ -1,0 +1,75 @@
+# RPM
+- name: Install DS (Centos 7 and RedOS 7.3)
+  when: (ansible_distribution == 'RED' and ansible_distribution_release == 'MUROM') or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "7") or
+        (ansible_distribution == "CentOS"  and ansible_distribution_major_version == "8") 
+  block:
+    - name: Install rabbitmq-server 
+      yum:
+        name: rabbitmq-server
+        state: latest
+        update_cache: true
+    - name: add 5672
+      ansible.posix.firewalld:
+        port: 5672/tcp
+        permanent: true
+        state: enabled
+      ignore_errors: true
+    - name: restart firewalld 
+      service: 
+        name: firewalld
+        state: restarted
+      ignore_errors: true
+
+# Deb       
+- name: Install DS (Debian 10 - 11) and Astra Linux (Orel)
+  when: (ansible_os_family == 'Debian')  or 
+        (ansible_os_family ==  'Astra Linux' )
+  block:
+    - name: install rabbitmq-server 
+      apt:
+        name: rabbitmq-server
+        update_cache: true
+
+
+- name: Start service redis
+  ansible.builtin.service:
+    name: rabbitmq-server
+    state: started
+    enabled: yes
+
+
+
+
+
+
+- name: rabbitmqctl add_user
+  shell:   rabbitmqctl add_user  "{{rmq_user}}" "{{rmq_password}}"
+
+- name: rabbitmqctl set_permissions
+  shell:  rabbitmqctl set_permissions -p / "{{rmq_user}}" ".*" ".*" ".*"  
+
+
+
+
+
+- name: rabbitmqctl add_vhost 
+  shell:  rabbitmqctl add_vhost {{ hostvars[item].ansible_host }}
+  with_items: "{{groups['ds_cluster']}}"
+
+- name: rabbitmqctl set_permissions
+  shell:  rabbitmqctl set_permissions -p {{ hostvars[item].ansible_host }} {{rmq_user}} ".*" ".*" ".*"  
+  with_items: "{{groups['ds_cluster']}}"
+
+- name: add 5672
+  ansible.posix.firewalld:
+    port: 5672/tcp
+    permanent: true
+    state: enabled
+  ignore_errors: true
+- name: restart firewalld 
+  service: 
+    name: firewalld
+    state: restarted
+  ignore_errors: true
+
